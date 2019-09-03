@@ -19,6 +19,8 @@ export const styles = theme => ({
       backgroundColor: theme.palette.grey[400],
     },
   },
+  /* Pseudo-class applied to the root element when expanded. */
+  expanded: {},
   /* Styles applied to the `role="group"` element. */
   group: {
     margin: 0,
@@ -43,7 +45,9 @@ export const styles = theme => ({
     justifyContent: 'center',
   },
   /* Styles applied to the label element. */
-  label: {},
+  label: {
+    width: '100%',
+  },
 });
 
 const isPrintableCharacter = str => {
@@ -239,7 +243,9 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
 
   return (
     <li
-      className={clsx(classes.root, className)}
+      className={clsx(classes.root, className, {
+        [classes.expanded]: expanded,
+      })}
       role="treeitem"
       onKeyDown={handleKeyDown}
       onFocus={handleFocus}
