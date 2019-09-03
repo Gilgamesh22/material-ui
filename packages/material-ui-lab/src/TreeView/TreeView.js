@@ -27,57 +27,117 @@ const TreeView = React.forwardRef(function TreeView(props, ref) {
     defaultExpandIcon,
     defaultParentIcon,
     isNodeExpandable,
+    treeItemInfo,
+    onNodeChecked,
     onNodeCollapsed,
     onNodeExpanded,
     onNodeToggle,
     ...other
   } = props;
-  const [treeItems, setTreeItems] = React.useState(defaultExpanded);
-  const [expanded, setExpanded] = React.useState(defaultExpanded);
-  const [tabable, setTabable] = React.useState(null);
+
+  const [tabable, setLocalTabable] = React.useState(null);
   const [focused, setFocused] = React.useState(null);
-  const firstNode = React.useRef(null);
-
   const nodeMap = React.useRef({});
-  const firstCharMap = React.useRef({});
 
-  const isExpanded = React.useCallback(id => expanded.indexOf(id) !== -1, [expanded]);
+  const setTabable = id => {
+    setLocalTabable(id);
+    const map = nodeMap.current[id];
+    if (map && map.forceUpdate) map.forceUpdate();
+  };
+
+  const isExpanded = id => nodeMap.current[id].expanded;
   const isTabable = id => tabable === id;
   const isFocused = id => focused === id;
 
-  React.useEffect(() => {
-    let items;
-    if (children) {
-      items = children;
-    } else if (onNodeExpanded) {
-      items = onNodeExpanded(undefined).map((node, i) => (
-        <TreeItem nodeId={node.nodeId} label={node.label} key={i} />
-      ));
-    }
-    setTreeItems(items);
-    nodeMap.current = {};
-    const childIds = React.Children.map(items, child => child.props.nodeId);
-    nodeMap.current[-1] = { parent: null, children: childIds };
+  const getChildren = id => nodeMap.current[id].childComponents;
+  const getId = node => node.component.props.nodeId;
 
-    (childIds || []).forEach((id, index) => {
-      if (index === 0) {
-        firstNode.current = id;
-        setTabable(id);
-      }
-      nodeMap.current[id] = { parent: null };
-    });
-  }, [children, onNodeExpanded]);
-
-  const getLastNode = React.useCallback(
-    id => {
+  const handleNodeMap = React.useCallback(
+    (id, treeItemChildren, forceUpdate) => {
       const map = nodeMap.current[id];
-      if (isExpanded(id) && map.children && map.children.length > 0) {
-        return getLastNode(map.children[map.children.length - 1]);
+      if (forceUpdate) map.forceUpdate = forceUpdate;
+      if (treeItemChildren) {
+        map.childComponents = treeItemChildren;
+        map.children = React.Children.map(treeItemChildren, child => {
+          nodeMap.current[child.props.nodeId] = {
+            component: child,
+            parent: id,
+            expanded:
+              child.props.expanded ||
+              defaultExpanded.find(expandedID => expandedID === child.props.nodeId) !== undefined,
+          };
+          handleNodeMap(child.props.nodeId, child.props.children);
+          return nodeMap.current[child.props.nodeId];
+        });
       }
-      return id;
+      return map;
     },
-    [isExpanded],
+    [defaultExpanded],
   );
+
+  const updateNodeMap = React.useCallback(
+    (id, myTreeItems) => {
+      const createTreeItems = myTreeItemsInfo => {
+        if (myTreeItemsInfo) {
+          const treeItemChildren = myTreeItemsInfo.map((child, i) => {
+            const childChildren = createTreeItems(child.children);
+            const { children: _children, ...childPrams } = child;
+            return (
+              <TreeItem {...childPrams} key={i}>
+                {childChildren}
+              </TreeItem>
+            );
+          });
+          return treeItemChildren;
+        }
+        return undefined;
+      };
+
+      const addToNodeMap = (myId, myTreeItemsInfo) => {
+        handleNodeMap(myId, myTreeItemsInfo);
+        React.Children.map(myTreeItemsInfo, child => {
+          addToNodeMap(child.props.nodeId, child.props.children);
+        });
+      };
+      addToNodeMap(id, createTreeItems(myTreeItems));
+    },
+    [handleNodeMap],
+  );
+
+  React.useEffect(() => {
+    nodeMap.current[-1] = { parent: null };
+
+    if (children) {
+      handleNodeMap(-1, children);
+    } else if (treeItemInfo) {
+      updateNodeMap(-1, treeItemInfo);
+    } else if (onNodeExpanded) {
+      const info = onNodeExpanded(undefined);
+      if (info && Array.isArray(info)) updateNodeMap(-1, info);
+    }
+
+    (nodeMap.current[-1].children || []).forEach((child, index) => {
+      if (index === 0) {
+        setTabable(getId(child));
+      }
+      nodeMap.current[getId(child)].parent = null;
+    });
+  }, [children, handleNodeMap, isNodeExpandable, onNodeExpanded, treeItemInfo, updateNodeMap]);
+
+  const getLastNode = React.useCallback(id => {
+    const map = nodeMap.current[id];
+    if (map.expanded && map.children && map.children.length > 0) {
+      return getLastNode(getId(map.children[map.children.length - 1]));
+    }
+    return id;
+  }, []);
+
+  const getFirstNode = () => {
+    if (nodeMap.current[-1].children && nodeMap.current[-1].children.length) {
+      return getId(nodeMap.current[-1].children[0]);
+    }
+    return undefined;
+  };
 
   const focus = id => {
     if (id) {
@@ -91,22 +151,22 @@ const TreeView = React.forwardRef(function TreeView(props, ref) {
     const parent = nodeMap.current[map.parent];
 
     if (!end) {
-      if (isExpanded(id)) {
-        return map.children[0];
+      if (map.expanded) {
+        return getId(map.children[0]);
       }
     }
     if (parent) {
-      const nodeIndex = parent.children.indexOf(id);
+      const nodeIndex = parent.children.findIndex(child => getId(child) === id);
       const nextIndex = nodeIndex + 1;
       if (parent.children.length > nextIndex) {
-        return parent.children[nextIndex];
+        return getId(parent.children[nextIndex]);
       }
-      return getNextNode(parent.id, true);
+      return getNextNode(getId(parent), true);
     }
     const topLevelNodes = nodeMap.current[-1].children;
-    const topLevelNodeIndex = topLevelNodes.indexOf(id);
+    const topLevelNodeIndex = topLevelNodes.findIndex(child => getId(child) === id);
     if (topLevelNodeIndex !== -1 && topLevelNodeIndex !== topLevelNodes.length - 1) {
-      return topLevelNodes[topLevelNodeIndex + 1];
+      return getId(topLevelNodes[topLevelNodeIndex + 1]);
     }
 
     return null;
@@ -117,17 +177,17 @@ const TreeView = React.forwardRef(function TreeView(props, ref) {
     const parent = nodeMap.current[map.parent];
 
     if (parent) {
-      const nodeIndex = parent.children.indexOf(id);
+      const nodeIndex = parent.children.findIndex(child => getId(child) === id);
       if (nodeIndex !== 0) {
         const nextIndex = nodeIndex - 1;
-        return getLastNode(parent.children[nextIndex]);
+        return getLastNode(getId(parent.children[nextIndex]));
       }
-      return parent.id;
+      return getId(parent);
     }
     const topLevelNodes = nodeMap.current[-1].children;
-    const topLevelNodeIndex = topLevelNodes.indexOf(id);
+    const topLevelNodeIndex = topLevelNodes.findIndex(child => getId(child) === id);
     if (topLevelNodeIndex > 0) {
-      return getLastNode(topLevelNodes[topLevelNodeIndex - 1]);
+      return getLastNode(getId(topLevelNodes[topLevelNodeIndex - 1]));
     }
 
     return null;
@@ -146,63 +206,59 @@ const TreeView = React.forwardRef(function TreeView(props, ref) {
     }
   };
   const focusFirstNode = () => {
-    if (firstNode.current) {
-      focus(firstNode.current);
+    const firstNode = getFirstNode();
+    if (firstNode) {
+      focus(firstNode);
     }
   };
 
   const focusLastNode = () => {
     const topLevelNodes = nodeMap.current[-1].children;
-    const lastNode = getLastNode(topLevelNodes[topLevelNodes.length - 1]);
+    const lastNode = getLastNode(getId(topLevelNodes[topLevelNodes.length - 1]));
     focus(lastNode);
   };
 
-  const toggle = (value = focused) => {
-    setExpanded(prevExpanded => {
-      let newExpanded;
+  const toggle = (id = focused) => {
+    const map = nodeMap.current[id];
+    map.expanded = !map.expanded;
 
-      if (prevExpanded.indexOf(value) !== -1) {
-        newExpanded = prevExpanded.filter(id => id !== value);
-        setTabable(oldTabable => {
-          const map = nodeMap.current[oldTabable];
-          if (oldTabable && (map && map.parent ? map.parent.id : null) === value) {
-            return value;
-          }
-          return oldTabable;
-        });
-      } else {
-        newExpanded = [value, ...prevExpanded];
+    if (onNodeToggle) {
+      onNodeToggle(id, map.expanded);
+    }
+    if (onNodeCollapsed && !map.expanded) {
+      onNodeCollapsed(id);
+    }
+    if (onNodeExpanded && map.expanded) {
+      const itemsChildren = onNodeExpanded(id);
+      if (itemsChildren) {
+        updateNodeMap(id, itemsChildren);
       }
-
-      if (onNodeToggle) {
-        onNodeToggle(value, newExpanded.indexOf(value) !== -1);
-      }
-
-      return newExpanded;
-    });
+    }
+    setTabable(id);
+    return map.expanded;
   };
 
   const expandAllSiblings = id => {
     const map = nodeMap.current[id];
-    const parent = nodeMap.current[map.parent];
+    let parent = nodeMap.current[map.parent];
 
-    let diff;
-    if (parent) {
-      diff = parent.children.filter(child => !isExpanded(child));
-    } else {
-      const topLevelNodes = nodeMap.current[-1].children;
-      diff = topLevelNodes.filter(node => !isExpanded(node));
+    if (!parent) {
+      parent = nodeMap.current[-1];
     }
-    setExpanded(oldExpanded => [...oldExpanded, ...diff]);
+
+    parent.children.forEach(child => {
+      if (!child.expanded) toggle(getId(child));
+    });
   };
 
   const handleLeftArrow = (id, event) => {
+    const map = nodeMap.current[id];
     let flag = false;
-    if (isExpanded(id)) {
+    if (map.expanded) {
       toggle(id);
       flag = true;
     } else {
-      const parent = nodeMap.current[id].parent;
+      const parent = map.parent;
       if (parent) {
         focus(parent);
         flag = true;
@@ -215,123 +271,79 @@ const TreeView = React.forwardRef(function TreeView(props, ref) {
     }
   };
 
-  const getIndexFirstChars = (firstChars, startIndex, char) => {
-    for (let i = startIndex; i < firstChars.length; i += 1) {
-      if (char === firstChars[i]) {
-        return i;
-      }
-    }
-    return -1;
-  };
-
   const setFocusByFirstCharacter = (id, char) => {
-    let start;
-    let index;
     const lowercaseChar = char.toLowerCase();
 
-    const firstCharIds = [];
-    const firstChars = [];
-    // This really only works since the ids are strings
-    Object.entries(firstCharMap.current).forEach(([nodeId, firstChar]) => {
-      const map = nodeMap.current[nodeId];
-      const visible = map.parent ? isExpanded(map.parent) : true;
-
-      if (visible) {
-        firstCharIds.push(nodeId);
-        firstChars.push(firstChar);
-      }
-    });
-
-    // Get start index for search based on position of currentItem
-    start = firstCharIds.indexOf(id) + 1;
-    if (start === nodeMap.current.length) {
-      start = 0;
+    let nextId = getNextNode(id);
+    while (nextId) {
+      const map = nodeMap.current[nextId];
+      if (map.lowercaseChar === lowercaseChar) break;
+      nextId = getNextNode(nextId);
     }
 
-    // Check remaining slots in the menu
-    index = getIndexFirstChars(firstChars, start, lowercaseChar);
-
-    // If not found in remaining slots, check from beginning
-    if (index === -1) {
-      index = getIndexFirstChars(firstChars, 0, lowercaseChar);
+    if (nextId === null) {
+      nextId = getFirstNode();
+      while (nextId !== id) {
+        const map = nodeMap.current[nextId];
+        if (map.lowercaseChar === lowercaseChar) break;
+        nextId = getNextNode(nextId);
+      }
+      if (nextId === id) nextId = undefined;
     }
 
     // If match was found...
-    if (index > -1) {
-      focus(firstCharIds[index]);
+    if (nextId) {
+      focus(nextId);
     }
   };
 
-  const handleNodeMap = (id, childrenIds) => {
-    const currentMap = nodeMap.current[id];
-    nodeMap.current[id] = { ...currentMap, children: childrenIds, id };
-    (childrenIds || []).forEach(childId => {
-      const currentChildMap = nodeMap.current[childId];
-      nodeMap.current[childId] = { ...currentChildMap, parent: id, id: childId };
-    });
-  };
-
-  const handleFirstChars = (id, firstChar) => {
-    firstCharMap.current[id] = firstChar;
+  const getItemChildren = id => {
+    if (nodeMap.current[id]) return nodeMap.current[id].childComponents;
+    return undefined;
   };
 
   const isExpandable = React.useCallback(
-    nodeId => {
-      if (isExpandable) {
-        return isNodeExpandable(nodeId);
+    id => {
+      const mod = nodeMap.current[id];
+      if (mod.children) {
+        return true;
       }
-      return undefined;
+      if (isNodeExpandable) {
+        return isNodeExpandable(id);
+      }
+      return false;
     },
     [isNodeExpandable],
   );
 
-  const onExpand = React.useCallback(
-    nodeId => {
-      const itemsChildren = onNodeExpanded(nodeId);
-      if (itemsChildren) {
-        const childIds = itemsChildren.map(child => child.nodeId);
-        handleNodeMap(nodeId, childIds);
-        return itemsChildren.map((node, i) => (
-          <TreeItem nodeId={node.nodeId} label={node.label} key={i} />
-        ));
-      }
-      return undefined;
-    },
-    [onNodeExpanded],
-  );
-
-  const onCollapse = React.useCallback(
-    nodeId => {
-      onNodeCollapsed(nodeId);
-    },
-    [onNodeCollapsed],
-  );
+  const onItemChecked = (id, checked) => {
+    onNodeChecked(id, checked)
+  };
 
   return (
     <TreeViewContext.Provider
       value={{
         expandAllSiblings,
+        getChildren,
         focus,
         focusFirstNode,
         focusLastNode,
         focusNextNode,
         focusPreviousNode,
-        onCollapse: onNodeCollapsed ? onCollapse : undefined,
-        onExpand: onNodeExpanded ? onExpand : undefined,
-        handleFirstChars,
         handleLeftArrow,
         handleNodeMap,
         icons: { defaultCollapseIcon, defaultExpandIcon, defaultParentIcon, defaultEndIcon },
-        isExpandable: isNodeExpandable ? isExpandable : undefined,
+        isExpandable,
         isExpanded,
         isFocused,
         isTabable,
+        onItemChecked: onNodeChecked? onItemChecked: undefined,
         setFocusByFirstCharacter,
         toggle,
       }}
     >
       <ul role="tree" className={clsx(classes.root, className)} ref={ref} {...other}>
-        {treeItems}
+        {getItemChildren(-1)}
       </ul>
     </TreeViewContext.Provider>
   );
@@ -381,6 +393,13 @@ TreeView.propTypes = {
    * @return {boolean} - If `true` the contains children. If `false` the node does not contain children. if undefined use React.Children.
    */
   isNodeExpandable: PropTypes.func,
+   /**
+   * Callback fired when a `TreeItem` is checked
+   *
+   * @param {string} nodeId The id of the node.
+   * @param {boolean} the state of the node.
+   */
+  onNodeChecked: PropTypes.func,
   /**
    * Callback fired when a `TreeItem` is collapsed
    *
@@ -402,6 +421,10 @@ TreeView.propTypes = {
    * @param {boolean} expanded The node status - If `true` the node was expanded. If `false` the node was collapsed.
    */
   onNodeToggle: PropTypes.func,
+  /**
+   * treeItemInfo can be used to give the layout of the treeView in object notation.
+   */
+  treeItemInfo: PropTypes.arrayOf(PropTypes.object),
 };
 
 export default withStyles(styles, { name: 'MuiTreeView' })(TreeView);

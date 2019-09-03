@@ -52,6 +52,7 @@ const isPrintableCharacter = str => {
 
 const TreeItem = React.forwardRef(function TreeItem(props, ref) {
   const {
+    checked,
     children,
     classes,
     className,
@@ -70,12 +71,12 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
 
   const {
     expandAllSiblings,
+    getChildren,
     focus,
     focusFirstNode,
     focusLastNode,
     focusNextNode,
     focusPreviousNode,
-    handleFirstChars,
     handleLeftArrow,
     handleNodeMap,
     icons: contextIcons,
@@ -83,22 +84,23 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     isExpandable,
     isFocused,
     isTabable,
-    onExpand,
-    onCollapse,
     setFocusByFirstCharacter,
+    onItemChecked,
     toggle,
   } = React.useContext(TreeViewContext);
 
+  const firstRun = React.useRef(true);
   const nodeRef = React.useRef(null);
   const contentRef = React.useRef(null);
   const handleRef = useForkRef(nodeRef, ref);
+  const [isChecked, setIsChecked] = React.useState(checked);
 
   let icon = iconProp;
 
-  const isFirstRun = React.useRef(true);
-  const [expandable, setExpandable] = React.useState(Boolean(children));
-  const [childNodes, setChildNodes] = React.useState(children);
-  const expanded = isExpanded ? isExpanded(nodeId) : false;
+  const [{ expanded }, setExpanded] = React.useState({ expanded: isExpanded(nodeId) });
+
+  const expandable = isExpandable(nodeId);
+  const myChildren = getChildren(nodeId);
   const focused = isFocused ? isFocused(nodeId) : false;
   const tabable = isTabable ? isTabable(nodeId) : false;
   const icons = contextIcons || {};
@@ -131,6 +133,7 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     if (onClick) {
       onClick(event);
     }
+    setExpanded({ expanded: isExpanded(nodeId) });
   };
 
   const handleKeyDown = event => {
@@ -150,56 +153,48 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
-    if (event.shift) {
-      if (key === ' ' || key === 'Enter') {
+    switch (key) {
+      case 'Enter':
+      case ' ':
+        if (nodeRef.current === event.currentTarget && expandable) {
+          toggle();
+          flag = true;
+        }
         event.stopPropagation();
-      } else if (isPrintableCharacter(key)) {
-        printableCharacter();
-      }
-    } else {
-      switch (key) {
-        case 'Enter':
-        case ' ':
-          if (nodeRef.current === event.currentTarget && expandable) {
+        break;
+      case 'ArrowDown':
+        focusNextNode(nodeId);
+        flag = true;
+        break;
+      case 'ArrowUp':
+        focusPreviousNode(nodeId);
+        flag = true;
+        break;
+      case 'ArrowRight':
+        if (expandable) {
+          if (expanded) {
+            focusNextNode(nodeId);
+          } else {
             toggle();
-            flag = true;
           }
-          event.stopPropagation();
-          break;
-        case 'ArrowDown':
-          focusNextNode(nodeId);
-          flag = true;
-          break;
-        case 'ArrowUp':
-          focusPreviousNode(nodeId);
-          flag = true;
-          break;
-        case 'ArrowRight':
-          if (expandable) {
-            if (expanded) {
-              focusNextNode(nodeId);
-            } else {
-              toggle();
-            }
-          }
-          flag = true;
-          break;
-        case 'ArrowLeft':
-          handleLeftArrow(nodeId, event);
-          break;
-        case 'Home':
-          focusFirstNode();
-          flag = true;
-          break;
-        case 'End':
-          focusLastNode();
-          flag = true;
-          break;
-        default:
-          if (isPrintableCharacter(key)) {
-            printableCharacter();
-          }
-      }
+        }
+        flag = true;
+        break;
+      case 'ArrowLeft':
+        handleLeftArrow(nodeId, event);
+        break;
+      case 'Home':
+        focusFirstNode();
+        flag = true;
+        break;
+      case 'End':
+        focusLastNode();
+        flag = true;
+        break;
+      default:
+        if (isPrintableCharacter(key)) {
+          printableCharacter();
+        }
     }
 
     if (flag) {
@@ -222,45 +217,19 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     }
   };
 
-  React.useEffect(() => {
-    if (children === undefined && isExpandable) {
-      setExpandable(isExpandable(nodeId));
-    }
-  }, [children, nodeId, isExpandable]);
+  const handleChecked = event => {
+    event.preventDefault();
+    onItemChecked(nodeId, event);
+    setIsChecked(!isChecked);
+  };
 
   React.useEffect(() => {
-    if (expandable && onExpand) {
-      if (expanded) {
-        const childItems = onExpand(nodeId);
-        if (childItems) {
-          setChildNodes(childItems);
-        }
-      }
+    if (firstRun.current) {
+      handleNodeMap(nodeId, children);
+      setExpanded({ expanded: isExpanded(nodeId) });
     }
-  }, [children, expanded, nodeId, expandable, onExpand]);
-
-  React.useEffect(() => {
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      return;
-    }
-    if (expanded === false && onCollapse !== undefined) onCollapse(nodeId);
-  }, [expanded, nodeId, onCollapse]);
-
-  React.useEffect(() => {
-    if (children !== undefined && onExpand === undefined) {
-      const childIds = React.Children.map(children, child => child.props.nodeId);
-      if (handleNodeMap) {
-        handleNodeMap(nodeId, childIds);
-      }
-    }
-  }, [children, handleNodeMap, nodeId, onExpand]);
-
-  React.useEffect(() => {
-    if (handleFirstChars && label) {
-      handleFirstChars(nodeId, label.substring(0, 1).toLowerCase());
-    }
-  }, [handleFirstChars, nodeId, label]);
+    firstRun.current = false;
+  }, [children, handleNodeMap, nodeId, isExpanded]);
 
   React.useEffect(() => {
     if (focused) {
@@ -281,9 +250,12 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     >
       <div className={classes.content} onClick={handleClick} ref={contentRef}>
         {icon ? <div className={classes.iconContainer}>{icon}</div> : null}
+        {onItemChecked ? (
+          <input type="checkbox" checked={isChecked} onChange={handleChecked} />
+        ) : null}
         <Typography className={classes.label}>{label}</Typography>
       </div>
-      {childNodes && (
+      {myChildren && (
         <TransitionComponent
           unmountOnExit
           className={classes.group}
@@ -291,7 +263,7 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
           component="ul"
           role="group"
         >
-          {childNodes}
+          {myChildren}
         </TransitionComponent>
       )}
     </li>
@@ -299,6 +271,10 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
 });
 
 TreeItem.propTypes = {
+  /**
+   * Identify if a Item is Checked or not.
+   */
+  checked: PropTypes.bool,
   /**
    * The content of the component.
    */

@@ -35,6 +35,7 @@ You can learn more about the difference by [reading our guide](/guides/minimizin
 | <span class="prop-name">onNodeCollapsed</span> | <span class="prop-type">func</span> |  | Callback fired when a `TreeItem` is collapsed<br><br>**Signature:**<br>`function(nodeId: string) => void`<br>*nodeId:* The id of the node. |
 | <span class="prop-name">onNodeExpanded</span> | <span class="prop-type">func</span> |  | Callback fired when a `TreeItem` is expanded. This can also be used to load children nodes virtually<br><br>**Signature:**<br>`function(nodeId: string, undefined: PropTypes.object) => void`<br>*nodeId:* The id of the node. If nodeId is undefined then the node in question is the root node.<br>*undefined:* the children of the Item. undefined can be returned to use React.Children. |
 | <span class="prop-name">onNodeToggle</span> | <span class="prop-type">func</span> |  | Callback fired when a `TreeItem` is expanded/collapsed.<br><br>**Signature:**<br>`function(nodeId: string, expanded: boolean) => void`<br>*nodeId:* The id of the toggled node.<br>*expanded:* The node status - If `true` the node was expanded. If `false` the node was collapsed. |
+| <span class="prop-name">treeItems</span> | <span class="prop-type">Array<object></span> |  | treeItems can be used to give the layout of the treeView in object notation. |
 
 The `ref` is forwarded to the root element.
 

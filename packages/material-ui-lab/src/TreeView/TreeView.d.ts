@@ -2,8 +2,10 @@ import * as React from 'react';
 import { StandardProps } from '@material-ui/core';
 
 export interface TreeItemInfo {
-  nodeId: string;
+  children?: TreeItemInfo[];
+  expanded?: boolean;
   label: string;
+  nodeId: string;
 }
 
 export interface TreeViewProps
@@ -17,6 +19,7 @@ export interface TreeViewProps
   onNodeCollapsed?: (nodeId: string | number | undefined) => void;
   onNodeExpanded?: (nodeId: string | number | undefined) => TreeItemInfo[] | undefined;
   onNodeToggle?: (nodeId: string, expanded: boolean) => void;
+  treeItemInfo?: TreeItemInfo[];
 }
 
 export type TreeViewClassKey = 'root';
