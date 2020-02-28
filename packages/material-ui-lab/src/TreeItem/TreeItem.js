@@ -56,6 +56,7 @@ const isPrintableCharacter = str => {
 
 const TreeItem = React.forwardRef(function TreeItem(props, ref) {
   const {
+    checked,
     children,
     classes,
     className,
@@ -74,30 +75,35 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
 
   const {
     expandAllSiblings,
+    getChildren,
     focus,
     focusFirstNode,
     focusLastNode,
     focusNextNode,
     focusPreviousNode,
-    handleFirstChars,
     handleLeftArrow,
     handleNodeMap,
     icons: contextIcons,
     isExpanded,
+    isExpandable,
     isFocused,
     isTabable,
     setFocusByFirstCharacter,
+    onItemChecked,
     toggle,
   } = React.useContext(TreeViewContext);
 
+  const firstRun = React.useRef(true);
   const nodeRef = React.useRef(null);
   const contentRef = React.useRef(null);
   const handleRef = useForkRef(nodeRef, ref);
+  const [isChecked, setIsChecked] = React.useState(checked);
 
   let icon = iconProp;
 
-  const expandable = Boolean(children);
-  const expanded = isExpanded ? isExpanded(nodeId) : false;
+  const [{ expanded }, setExpanded] = React.useState({ expanded: isExpanded(nodeId) });
+  const [expandable, setExpandable] = React.useState(false);
+  const myChildren = getChildren(nodeId);
   const focused = isFocused ? isFocused(nodeId) : false;
   const tabable = isTabable ? isTabable(nodeId) : false;
   const icons = contextIcons || {};
@@ -130,6 +136,7 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     if (onClick) {
       onClick(event);
     }
+    setExpanded({ expanded: isExpanded(nodeId) });
   };
 
   const handleKeyDown = event => {
@@ -149,56 +156,48 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
-    if (event.shift) {
-      if (key === ' ' || key === 'Enter') {
+    switch (key) {
+      case 'Enter':
+      case ' ':
+        if (nodeRef.current === event.currentTarget && expandable) {
+          toggle();
+          flag = true;
+        }
         event.stopPropagation();
-      } else if (isPrintableCharacter(key)) {
-        printableCharacter();
-      }
-    } else {
-      switch (key) {
-        case 'Enter':
-        case ' ':
-          if (nodeRef.current === event.currentTarget && expandable) {
+        break;
+      case 'ArrowDown':
+        focusNextNode(nodeId);
+        flag = true;
+        break;
+      case 'ArrowUp':
+        focusPreviousNode(nodeId);
+        flag = true;
+        break;
+      case 'ArrowRight':
+        if (expandable) {
+          if (expanded) {
+            focusNextNode(nodeId);
+          } else {
             toggle();
-            flag = true;
           }
-          event.stopPropagation();
-          break;
-        case 'ArrowDown':
-          focusNextNode(nodeId);
-          flag = true;
-          break;
-        case 'ArrowUp':
-          focusPreviousNode(nodeId);
-          flag = true;
-          break;
-        case 'ArrowRight':
-          if (expandable) {
-            if (expanded) {
-              focusNextNode(nodeId);
-            } else {
-              toggle();
-            }
-          }
-          flag = true;
-          break;
-        case 'ArrowLeft':
-          handleLeftArrow(nodeId, event);
-          break;
-        case 'Home':
-          focusFirstNode();
-          flag = true;
-          break;
-        case 'End':
-          focusLastNode();
-          flag = true;
-          break;
-        default:
-          if (isPrintableCharacter(key)) {
-            printableCharacter();
-          }
-      }
+        }
+        flag = true;
+        break;
+      case 'ArrowLeft':
+        handleLeftArrow(nodeId, event);
+        break;
+      case 'Home':
+        focusFirstNode();
+        flag = true;
+        break;
+      case 'End':
+        focusLastNode();
+        flag = true;
+        break;
+      default:
+        if (isPrintableCharacter(key)) {
+          printableCharacter();
+        }
     }
 
     if (flag) {
@@ -221,18 +220,24 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     }
   };
 
-  React.useEffect(() => {
-    const childIds = React.Children.map(children, child => child.props.nodeId);
-    if (handleNodeMap) {
-      handleNodeMap(nodeId, childIds);
-    }
-  }, [children, nodeId, handleNodeMap]);
+  const handleChecked = event => {
+    event.preventDefault();
+    onItemChecked(nodeId, event);
+    setIsChecked(!isChecked);
+  };
 
   React.useEffect(() => {
-    if (handleFirstChars && label) {
-      handleFirstChars(nodeId, contentRef.current.textContent.substring(0, 1).toLowerCase());
+    if (isExpandable(nodeId))
+      setExpandable(true);
+  }, [isExpandable, nodeId]); // componentDidMount
+
+  React.useEffect(() => {
+    if (firstRun.current) {
+      handleNodeMap(nodeId, children);
+      setExpanded({ expanded: isExpanded(nodeId) });
     }
-  }, [handleFirstChars, nodeId, label]);
+    firstRun.current = false;
+  }, [children, handleNodeMap, nodeId, isExpanded]);
 
   React.useEffect(() => {
     if (focused) {
@@ -255,19 +260,20 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
     >
       <div className={classes.content} onClick={handleClick} ref={contentRef}>
         {icon ? <div className={classes.iconContainer}>{icon}</div> : null}
-        <Typography component="div" className={classes.label}>
-          {label}
-        </Typography>
+        {onItemChecked ? (
+          <input type="checkbox" checked={isChecked} onChange={handleChecked} />
+        ) : null}
+        <Typography className={classes.label}>{label}</Typography>
       </div>
-      {children && (
+      {myChildren && (
         <TransitionComponent
           unmountOnExit
           className={classes.group}
-          in={expanded}
+          in={expanded && myChildren}
           component="ul"
           role="group"
         >
-          {children}
+          {myChildren}
         </TransitionComponent>
       )}
     </li>
@@ -275,6 +281,10 @@ const TreeItem = React.forwardRef(function TreeItem(props, ref) {
 });
 
 TreeItem.propTypes = {
+  /**
+   * Identify if a Item is Checked or not.
+   */
+  checked: PropTypes.bool,
   /**
    * The content of the component.
    */

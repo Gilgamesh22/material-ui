@@ -22,7 +22,10 @@ export const styles = theme => ({
     },
   },
   /* Styles applied to the Toolbar component. */
-  toolbar: {
+  toolbarRegular: {
+    paddingRight: 2,
+  },
+  toolbarDense: {
     height: 56,
     minHeight: 56,
     paddingRight: 2,
@@ -90,6 +93,7 @@ const TablePagination = React.forwardRef(function TablePagination(props, ref) {
     rowsPerPage,
     rowsPerPageOptions = defaultRowsPerPageOptions,
     SelectProps = {},
+    variant,
     ...other
   } = props;
 
@@ -103,7 +107,7 @@ const TablePagination = React.forwardRef(function TablePagination(props, ref) {
 
   return (
     <Component className={classes.root} colSpan={colSpan} ref={ref} {...other}>
-      <Toolbar className={classes.toolbar}>
+      <Toolbar className={classes.toolbar} variant={variant}>
         <div className={classes.spacer} />
         {rowsPerPageOptions.length > 1 && (
           <Typography color="inherit" variant="caption" className={classes.caption}>
@@ -235,6 +239,10 @@ TablePagination.propTypes = {
    * Props applied to the rows per page [`Select`](/api/select/) element.
    */
   SelectProps: PropTypes.object,
+  /**
+   * The variant to use.
+   */
+  variant: PropTypes.oneOf(['regular', 'dense']),
 };
 
 export default withStyles(styles, { name: 'MuiTablePagination' })(TablePagination);

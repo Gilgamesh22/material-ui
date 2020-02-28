@@ -11,6 +11,10 @@ components: TreeView、TreeItem
 
 {{"demo": "pages/components/tree-view/FileSystemNavigator.js"}}
 
+## Virtual tree view
+
+{{"demo": "pages/components/tree-view/VirtualFileSystemNavigator.js"}}
+
 ## カスタマイズされたツリービュー
 
 ### Custom icons, border and animation
